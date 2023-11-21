@@ -15,6 +15,7 @@ class Connection:
                           hostname.
         """
         
+        self.json_lo = ""
         self.client = paramiko.SSHClient()
 
         self.client.load_system_host_keys()    

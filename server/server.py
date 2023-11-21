@@ -3,7 +3,8 @@ import socket
 import sys, os
 from threading import Thread
 import connection
-import json
+import database
+import sqlite3
 
 WORKING_DIR   = os.getcwd()
 HOST_KEY_PATH = WORKING_DIR + os.sep + "ssh-server.key"
@@ -17,6 +18,7 @@ else:
     HOST_KEY = paramiko.RSAKey.generate(bits=2048)
     HOST_KEY.write_private_key_file(HOST_KEY_PATH)
 
+database.setup_database()
 
 def handle_connection(tcp_conn, addr):
     
@@ -42,9 +44,12 @@ def handle_connection(tcp_conn, addr):
     username = login_info["username"]
     password = login_info["password"]
 
-    print(f"username: {username}, password: {password}")
-
-    client_connection.send_json_object({ "status": "success" })
+    db_conn = sqlite3.connect(database.DATABSE_NAME)
+    if database.has_user_by(db_conn, username, password):
+        client_connection.send_json_object({ "status": "success" })
+    else:
+        client_connection.send_json_object({ "status": "wrong_creds" })
+    db_conn.close()
 
     client_connection.close()
 

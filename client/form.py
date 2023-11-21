@@ -3,11 +3,17 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from connection import connection
 from threading import Thread
+from enum import Enum
 
-MAX_USERNAME_LENGTH = 12
+MAX_USERNAME_LENGTH = 16
 USERNAME_REG_EXP    = QRegExp("[a-zA-Z][a-zA-Z_0-9]*")
 
 MAX_PASSWORD_LENGTH = 30
+
+class LoginResponse(Enum):
+    NONE        = 0
+    SUCCESS     = 1
+    WRONG_CREDS = 2
 
 class LoginForm(QWidget):
 
@@ -16,7 +22,7 @@ class LoginForm(QWidget):
     def __init__(self, hostname):
         super().__init__()
         self.hostname = hostname
-        self.successful_login = False
+        self.login_response = LoginResponse.NONE
 
         self.setWindowTitle("Simple Messenger - Login")
         self.setFixedSize(270, 300)
@@ -58,13 +64,22 @@ class LoginForm(QWidget):
         layout.addRow(self.submit_button)
 
     def login_check(self):
-        if self.successful_login:
-            self.successful_login = False
+        if self.login_response == LoginResponse.SUCCESS:
+            self.login_response = LoginResponse.NONE
             self.on_successful_login()
+        elif self.login_response == LoginResponse.WRONG_CREDS:
+            self.login_response = LoginResponse.NONE
+            self.error_label.setText("Invalid credentials")
+            self.set_form_enabled(True)
 
     def on_successful_login(self):
         self.close()
         self.message_board.show()
+
+    def set_form_enabled(self, tof):
+        self.username_field.setDisabled(not tof)
+        self.password_field.setDisabled(not tof)
+        self.submit_button.setDisabled(not tof)
 
     def attempt_login(self):
         if self.username_field.text() == "":
@@ -74,10 +89,7 @@ class LoginForm(QWidget):
             self.error_label.setText("No password provided")
             return
 
-        self.username_field.setDisabled(True)
-        self.password_field.setDisabled(True)
-        self.submit_button.setDisabled(True)
-        
+        self.set_form_enabled(False)
         username = self.username_field.text()
         password = self.password_field.text()
         # Starting the connection on a seperate thread to prevent
@@ -91,17 +103,19 @@ class LoginForm(QWidget):
             connection.create_connection(self.hostname)
         except Exception:
             self.error_label.setText("Failed to connect to server")
-            self.username_field.setDisabled(False)
-            self.password_field.setDisabled(False)
-            self.submit_button.setDisabled(False)
+            self.set_form_enabled(True)
             return
 
 
         connection.send_json_object({ "username": username, "password": password })
         response = connection.read_json_object()
         
-        if response["status"] == "success":
-            self.successful_login = True
+        status = response["status"]
+        if status == "success":
+            self.login_response = LoginResponse.SUCCESS
+        elif status == "wrong_creds":
+            self.login_response = LoginResponse.WRONG_CREDS
+            connection.close()
         else:
             connection.close()
 

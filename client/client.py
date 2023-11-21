@@ -13,6 +13,12 @@ if __name__ == "__main__":
     login_form.message_board = message_board
     message_board.login_form = login_form
 
+    for arg in sys.argv:
+        if arg.startswith("-u:"):
+            login_form.username_field.setText(arg.split(":")[1])
+        elif arg.startswith("-p:"):
+            login_form.password_field.setText(arg.split(":")[1])
+
     # TODO: would be nice to have this within a member function of
     #       LoginForm but for some unknown reason it refuses to start.
     login_check_timer = QtCore.QTimer()
