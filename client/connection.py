@@ -14,11 +14,12 @@ class Connection:
         create_connection establishes a SSH connection with the given
                           hostname.
         """
+        
         self.client = paramiko.SSHClient()
 
         self.client.load_system_host_keys()    
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy)
-        self.client.connect(hostname, port=22)
+        self.client.connect(hostname, port=22, banner_timeout=200)
 
         # SSH has multiple layers so got to also open the channel for it to work.
         self.channel = self.client.get_transport().open_channel("session")
