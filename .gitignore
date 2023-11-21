@@ -1,0 +1,5 @@
+# Do not want to publically expose address information.
+client/host.txt
+
+# Key can just be generated when launching.
+server/ssh-server.key

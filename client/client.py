@@ -3,6 +3,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 import sys
+import paramiko
 
 MAX_USERNAME_LENGTH = 12
 USERNAME_REG_EXP    = QRegExp("[a-zA-Z][a-zA-Z_0-9]*")
@@ -10,8 +11,10 @@ USERNAME_REG_EXP    = QRegExp("[a-zA-Z][a-zA-Z_0-9]*")
 MAX_PASSWORD_LENGTH = 30
 
 class LoginForm(QWidget):
-    def __init__(self):
+    def __init__(self, hostname):
         super().__init__()
+        self.hostname = hostname
+
         self.setWindowTitle("Simple Messenger")
         self.setFixedSize(270, 300)
 
@@ -59,15 +62,42 @@ class LoginForm(QWidget):
             self.error_label.setText("No password provided")
             return
 
+        # TODO: This needs to run on a seperate thread to prevent the
+        #       application from freezing.
+
         print("Attempting to login to server!")
+        
+        client = paramiko.SSHClient()
+        client.load_system_host_keys()
+        try:
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy)
+            client.connect(self.hostname, port=22)
+        except Exception:
+            self.error_label.setText("Failed to connect to server")
+            return
+
+        print("Client successfully connected to the SSH server")
+
+        # SSH has multiple layers so got to also open the channel for it to work.
+        chan = client.get_transport().open_channel("session")
+        
+        underlying_sock = chan.get_transport().sock
+        encrypted_message = underlying_sock.recv(1024)
+
+        #message = chan.recv(1024)
+        print(f"encrypted message from server: {encrypted_message}")
+
+        client.close()
 
     def center_on_monitor(self):
         fg = self.frameGeometry()
         fg.moveCenter(QDesktopWidget().availableGeometry().center())
         self.move(fg.topLeft())
 
+hostname = open("host.txt", "r").read()
+
 app = QApplication(sys.argv)
-login_form = LoginForm()
+login_form = LoginForm(hostname)
 
 # Telling the application to run!
 login_form.show()
