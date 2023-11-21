@@ -3,7 +3,9 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 import sys
-import paramiko
+from connection import connection
+from threading import Thread
+import threading
 
 MAX_USERNAME_LENGTH = 12
 USERNAME_REG_EXP    = QRegExp("[a-zA-Z][a-zA-Z_0-9]*")
@@ -11,6 +13,7 @@ USERNAME_REG_EXP    = QRegExp("[a-zA-Z][a-zA-Z_0-9]*")
 MAX_PASSWORD_LENGTH = 30
 
 class LoginForm(QWidget):
+
     def __init__(self, hostname):
         super().__init__()
         self.hostname = hostname
@@ -43,16 +46,16 @@ class LoginForm(QWidget):
         self.error_label = QLabel("")
         self.error_label.setStyleSheet("color : #f20000")
 
-        submit_button = QPushButton("Login")
-        submit_button.setFixedSize(250, 30)
-        submit_button.clicked.connect(self.attempt_login)
+        self.submit_button = QPushButton("Login")
+        self.submit_button.setFixedSize(250, 30)
+        self.submit_button.clicked.connect(self.attempt_login)
 
         layout.addRow(self.username_label)
         layout.addRow(self.username_field)
         layout.addRow(self.password_label)
         layout.addRow(self.password_field)
         layout.addRow(self.error_label)
-        layout.addRow(submit_button)
+        layout.addRow(self.submit_button)
 
     def attempt_login(self):
         if self.username_field.text() == "":
@@ -62,32 +65,38 @@ class LoginForm(QWidget):
             self.error_label.setText("No password provided")
             return
 
-        # TODO: This needs to run on a seperate thread to prevent the
-        #       application from freezing.
-
-        print("Attempting to login to server!")
+        self.username_field.setDisabled(True)
+        self.password_field.setDisabled(True)
+        self.submit_button.setDisabled(True)
         
-        client = paramiko.SSHClient()
-        client.load_system_host_keys()
+        username = self.username_field.text()
+        password = self.password_field.text()
+        # Starting the connection on a seperate thread to prevent
+        # the application from freezing.
+        connect_thread = Thread(target=self.try_connect, args=(username, password))
+        connect_thread.start()
+
+    def try_connect(self, username, password):
+
         try:
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy)
-            client.connect(self.hostname, port=22)
+            connection.create_connection(self.hostname)
         except Exception:
             self.error_label.setText("Failed to connect to server")
+            self.username_field.setDisabled(False)
+            self.password_field.setDisabled(False)
+            self.submit_button.setDisabled(False)
             return
 
-        print("Client successfully connected to the SSH server")
 
-        # SSH has multiple layers so got to also open the channel for it to work.
-        chan = client.get_transport().open_channel("session")
-        
-        underlying_sock = chan.get_transport().sock
-        encrypted_message = underlying_sock.recv(1024)
+        connection.send_json_object({ "username": username, "password": password })
+        response = connection.read_json_object()
+        status = response["status"]
+        print(f"status: {status}")
 
-        #message = chan.recv(1024)
-        print(f"encrypted message from server: {encrypted_message}")
+        connection.close()
 
-        client.close()
+        return
+
 
     def center_on_monitor(self):
         fg = self.frameGeometry()

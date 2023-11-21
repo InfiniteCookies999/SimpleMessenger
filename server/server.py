@@ -2,7 +2,8 @@ import paramiko
 import socket
 import sys, os
 from threading import Thread
-import threading
+import connection
+import json
 
 WORKING_DIR   = os.getcwd()
 HOST_KEY_PATH = WORKING_DIR + os.sep + "ssh-server.key"
@@ -16,48 +17,36 @@ else:
     HOST_KEY = paramiko.RSAKey.generate(bits=2048)
     HOST_KEY.write_private_key_file(HOST_KEY_PATH)
 
-print(f"host key fingerprint: {HOST_KEY.get_fingerprint()}")
 
-class SSHInterface(paramiko.ServerInterface):
-    def __init__(self):
-        self.event = threading.Event()
+def handle_connection(tcp_conn, addr):
     
-    def check_channel_request(self, kind, chanid):
-        if kind == "session":
-            return paramiko.OPEN_SUCCEEDED
-        return paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
-
-    def get_allowed_auths(self, username):
-        return "publickey"
-
-    def check_auth_publickey(self, username, key):
-        return paramiko.AUTH_SUCCESSFUL
-
-def handle_connection(conn, addr):
-    
-    print("[*] Recieved client connection with address: {:s}".format(addr[0]))
-    
-    ssh_session = paramiko.Transport(conn)
-    ssh_session.add_server_key(HOST_KEY)
+    print("[*] Recieved client connection with address: {:s}.".format(addr[0]))
     
     try:
-        ssh_session.start_server(server=SSHInterface())
-        channel = ssh_session.accept(20)
-        if channel == None:
-            print("[=] ssh session channel was None.")
-            ssh_session.close()
-            return
+        client_connection = connection.ClientConnection()
+        client_connection.create_connection(tcp_conn, HOST_KEY)
+        if not client_connection.is_open():
+            print("[=] Failed to open the SSH channel for client.")
     except Exception:
-        print("[=] client failed to authenticate via SSH.")
-        ssh_session.close()
+        print("[=] Client failed to authenticate via SSH.")
+        client_connection.close()
         return
-    
+
     print("[*] Client successfully authenticated with SSH.")
 
-    # let us send a message!
-    channel.send("Sending potentially encrypted data to client")
+    login_info = client_connection.read_json_object()
+    if not "username" in login_info or not "password" in login_info:
+        # User supplied bad login information.
+        return
+    
+    username = login_info["username"]
+    password = login_info["password"]
 
-    ssh_session.close()
+    print(f"username: {username}, password: {password}")
+
+    client_connection.send_json_object({ "status": "success" })
+
+    client_connection.close()
 
 
 print("[*] Opening the server socket for connections...")
