@@ -4,6 +4,8 @@ from PyQt5.QtGui import *
 import connection
 from threading import Thread 
 
+MAX_MESSAGE_LENGTH = 1500
+
 class MessageBoard(QWidget):
 
    login_form : QWidget
@@ -29,6 +31,8 @@ class MessageBoard(QWidget):
       self.msg_scroll_area.setWidgetResizable(True)
 
       self.msg_field = QLineEdit()
+      self.msg_field.setPlaceholderText("Send message here!")
+      self.msg_field.setMaxLength(MAX_MESSAGE_LENGTH)
       self.msg_field.setFixedHeight(30)
       self.msg_field.returnPressed.connect(self.on_submit_msg)
 
@@ -80,6 +84,11 @@ class MessageBoard(QWidget):
    def on_submit_msg(self):
       message_to_send = self.msg_field.text()
       if message_to_send == "":
+         return
+      
+      if len(message_to_send) > MAX_MESSAGE_LENGTH:
+         # The field should not even allow this but adding the check
+         # just in case.
          return
 
       self.msg_field.clear()
