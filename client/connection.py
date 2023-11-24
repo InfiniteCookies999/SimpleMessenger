@@ -2,8 +2,8 @@ import paramiko
 import json
 
 class Connection:
-    client  : paramiko.SSHClient
-    channel : paramiko.Channel
+    client  : paramiko.SSHClient = None
+    channel : paramiko.Channel   = None
     # When reading json objects if there are
     # any leftover bytes from reading a previous
     # json object it is stored in json_lo.
@@ -31,14 +31,16 @@ class Connection:
                          network and returns it to the caller.
         """
         json_obj = self.json_lo
-        while True:
+        while self.is_open():
             packet = self.channel.recv(512).decode("utf-8")
             if "\n" in packet:
                 # end of json delim
                 parts = packet.split("\n")
                 rest         = parts[0]
-                self.json_lo = packet[1]
+                self.json_lo = parts[1]
                 return json.loads(json_obj + rest)
+        # Return None since the connection was closed.
+        return None
 
     def send_json_object(self, obj):
         """
@@ -48,8 +50,12 @@ class Connection:
         packet = bytes(json.dumps(obj) + "\n", encoding="utf-8")
         self.channel.sendall(packet)
 
+    def is_open(self):
+        return self.client.get_transport() != None and self.client.get_transport().is_active()
+
     def close(self):
+        if self.channel == None:
+            return
+
         self.channel.close()
         self.client.close()
-
-connection = Connection()

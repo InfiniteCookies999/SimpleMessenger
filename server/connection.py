@@ -37,25 +37,27 @@ class ClientConnection:
         self.ssh_session.add_server_key(host_key)
         self.ssh_session.start_server(server=SSHInterface())
         self.channel = self.ssh_session.accept(20)
-
+        
     def read_json_object(self):
         """
         read_json_object reads a single json object from the
                          network and returns it to the caller.
         """
         json_obj = self.json_lo
-        while True:
+        while self.is_open():
             packet = self.channel.recv(512).decode("utf-8")
             if len(json_obj) + len(packet) > MAX_JSON_OBJECT_SIZE:
-                raise IOError("Client sent a json object that was too large")
+                raise ValueError("Client sent a json object that was too large")
             if "\n" in packet:
                 # end of json delim
                 parts = packet.split("\n")
                 rest         = parts[0]
-                self.json_lo = packet[1]
+                self.json_lo = parts[1]
                 return json.loads(json_obj + rest)
             else:
                 json_obj += packet
+        # Return None since the connection was closed.
+        return None
 
     def send_json_object(self, obj):
         """
@@ -66,7 +68,7 @@ class ClientConnection:
         self.channel.sendall(packet)
 
     def is_open(self):
-        return self.channel != None
+        return self.channel != None and self.ssh_session.is_active()
 
     def close(self):
         self.ssh_session.close()

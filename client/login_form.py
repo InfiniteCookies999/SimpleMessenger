@@ -1,9 +1,9 @@
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-from connection import connection
 from threading import Thread
 from enum import Enum
+import connection
 
 MAX_USERNAME_LENGTH = 16
 USERNAME_REG_EXP    = QRegExp("[a-zA-Z][a-zA-Z_0-9]*")
@@ -11,16 +11,18 @@ USERNAME_REG_EXP    = QRegExp("[a-zA-Z][a-zA-Z_0-9]*")
 MAX_PASSWORD_LENGTH = 30
 
 class LoginResponse(Enum):
-    NONE        = 0
-    SUCCESS     = 1
-    WRONG_CREDS = 2
+    NONE         = 0
+    SUCCESS      = 1
+    WRONG_CREDS  = 2
+    CONNECT_FAIL = 3
 
 class LoginForm(QWidget):
 
     message_board : QWidget
 
-    def __init__(self, hostname):
+    def __init__(self, hostname, conn: connection.Connection):
         super().__init__()
+        self.conn = conn
         self.hostname = hostname
         self.login_response = LoginResponse.NONE
 
@@ -63,6 +65,11 @@ class LoginForm(QWidget):
         layout.addRow(self.error_label)
         layout.addRow(self.submit_button)
 
+        self.login_check_timer = QTimer()
+        self.login_check_timer.setInterval(100)
+        self.login_check_timer.timeout.connect(self.login_check)
+        self.login_check_timer.start()
+
     def login_check(self):
         if self.login_response == LoginResponse.SUCCESS:
             self.login_response = LoginResponse.NONE
@@ -71,8 +78,13 @@ class LoginForm(QWidget):
             self.login_response = LoginResponse.NONE
             self.error_label.setText("Invalid credentials")
             self.set_form_enabled(True)
+        elif self.login_response == LoginResponse.CONNECT_FAIL:
+            self.login_response = LoginResponse.NONE
+            self.error_label.setText("Failed to connect to server")
+            self.set_form_enabled(True)
 
     def on_successful_login(self):
+        self.message_board.run_packet_recv_thread()
         self.close()
         self.message_board.show()
 
@@ -100,24 +112,31 @@ class LoginForm(QWidget):
     def try_connect(self, username, password):
 
         try:
-            connection.create_connection(self.hostname)
+            self.conn.create_connection(self.hostname)
         except Exception:
             self.error_label.setText("Failed to connect to server")
             self.set_form_enabled(True)
             return
 
 
-        connection.send_json_object({ "username": username, "password": password })
-        response = connection.read_json_object()
+        self.conn.send_json_object({ "username": username, "password": password })
+        response = self.conn.read_json_object()
+
+        if response == None:
+            # Server must have shutdown early.
+            self.login_response = LoginResponse.CONNECT_FAIL
+            self.conn.close()
+            return
         
         status = response["status"]
         if status == "success":
             self.login_response = LoginResponse.SUCCESS
         elif status == "wrong_creds":
             self.login_response = LoginResponse.WRONG_CREDS
-            connection.close()
+            self.conn.close()
         else:
-            connection.close()
+            self.login_response = LoginResponse.CONNECT_FAIL
+            self.conn.close()
 
     def center_on_monitor(self):
         fg = self.frameGeometry()
