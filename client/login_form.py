@@ -72,6 +72,7 @@ class LoginForm(QWidget):
 
     def login_check(self):
         if self.login_response == LoginResponse.SUCCESS:
+            self.conn.send_json_object({ "act": "friends_list" })
             self.login_response = LoginResponse.NONE
             self.on_successful_login()
         elif self.login_response == LoginResponse.WRONG_CREDS:
@@ -104,6 +105,8 @@ class LoginForm(QWidget):
         self.set_form_enabled(False)
         username = self.username_field.text()
         password = self.password_field.text()
+
+        self.message_board.username = username
         # Starting the connection on a seperate thread to prevent
         # the application from freezing.
         connect_thread = Thread(target=self.try_connect, args=(username, password))

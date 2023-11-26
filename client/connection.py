@@ -10,9 +10,7 @@ class Connection:
     json_lo = ""
 
     def create_connection(self, hostname):
-        """
-        create_connection establishes a SSH connection with the given
-                          hostname.
+        """Establishes a SSH connection with the given hostname.
         """
         
         self.json_lo = ""
@@ -26,9 +24,8 @@ class Connection:
         self.channel = self.client.get_transport().open_channel("session")
        
     def read_json_object(self):
-        """
-        read_json_object reads a single json object from the
-                         network and returns it to the caller.
+        """Reads a single json object from the network and returns
+           it to the caller.
         """
         json_obj = self.json_lo
         while self.is_open():
@@ -43,9 +40,7 @@ class Connection:
         return None
 
     def send_json_object(self, obj):
-        """
-        send_json_object takes a json object (python dictionary) and
-                         sends it to the server.
+        """Takes a json object (python dictionary) and sends it to the server.
         """
         packet = bytes(json.dumps(obj) + "\n", encoding="utf-8")
         self.channel.sendall(packet)

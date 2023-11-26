@@ -28,10 +28,8 @@ class ClientConnection:
     json_lo = ""
 
     def create_connection(self, tcp_conn, host_key):
-        """
-        create_connection takes an already open tcp connection and
-                          turns it into a SSH session to securely send
-                          messages back and forth. 
+        """Takes an already open TCP connection and turns it into a SSH session
+           to securely send messages back and forth. 
         """
         self.ssh_session = paramiko.Transport(tcp_conn)
         self.ssh_session.add_server_key(host_key)
@@ -39,9 +37,12 @@ class ClientConnection:
         self.channel = self.ssh_session.accept(20)
         
     def read_json_object(self):
-        """
-        read_json_object reads a single json object from the
-                         network and returns it to the caller.
+        """Reads a single json object from the network and
+           returns it to the caller.
+
+           :raises ValueError:
+              if the client sent a json object larger than
+              ``MAX_JSON_OBJECT_SIZE``.
         """
         json_obj = self.json_lo
         while self.is_open():
@@ -60,9 +61,7 @@ class ClientConnection:
         return None
 
     def send_json_object(self, obj):
-        """
-        send_json_object takes a json object (python dictionary) and
-                         sends it to the client.
+        """Takes a json object (python dictionary) and sends it to the client.
         """
         packet = bytes(json.dumps(obj) + "\n", encoding="utf-8")
         self.channel.sendall(packet)

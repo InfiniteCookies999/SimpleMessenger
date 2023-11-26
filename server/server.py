@@ -3,22 +3,13 @@ import socket
 import sys, os
 from threading import Thread
 import connection
-import database
-import sqlite3
+from database import DatabaseConnection 
 import socket
+import packet_processing
+from client import Client 
 
 WORKING_DIR   = os.getcwd()
 HOST_KEY_PATH = WORKING_DIR + os.sep + "ssh-server.key"
-
-MAX_MESSAGE_LENGTH = 1500
-
-class Client:
-    def __init__(self, addr, username):
-        self.addr = addr
-        self.username = username
-
-# Map of client connections to Client objects.
-connected_clients = {}
 
 # Creating the ssh host key if it does not exist.
 if os.path.isfile(HOST_KEY_PATH):
@@ -31,57 +22,17 @@ else:
     HOST_KEY.write_private_key_file(HOST_KEY_PATH)
 
 # Creates the database and tables if they do not exist.
-database.setup_database()
-
-def handle_client_packets(client_connection: connection.ClientConnection):
-    client = connected_clients[client_connection]
-    
-    while client_connection.is_open():
-        try:
-            client_msg = client_connection.read_json_object()
-            
-            if client_msg == None:
-                # Means the connection was closed.
-                break
-
-            if not "act" in client_msg:
-                print("[=] Client sent invalid json not containing an act.")
-                break
-            match client_msg["act"]:
-                case "message":
-                    if not "body" in client_msg:
-                        break
-                    
-                    msg = client_msg["body"]
-                    if len(msg) > MAX_MESSAGE_LENGTH:
-                        # Client sending messages that are too large!
-                        break
-
-                    msg_to_send = {
-                        "act": "message",
-                        "user": client.username,
-                        "body": msg
-                    }
-                    # Sending the message to all the clients.
-                    for other_conn in connected_clients:
-                        other_conn.send_json_object(msg_to_send)
-                case _:
-                    print("[=] Client sent an unknown act.")
-                    break
-        except socket.timeout:
-            pass
-        except IOError as e:
-            print("[=] IOError: {:s}.".format(str(e)))
-            break
-        except ValueError as e:
-            print("[=] Client sent invalid json: {:s}.".format(str(e)))
-            break
-    
-    print("[*] Client with address {:s} has disconnected.".format(client.addr[0]))
-    del connected_clients[client_connection]
-    client_connection.close()
+db_conn = DatabaseConnection()
+db_conn.setup()
+del db_conn
 
 def handle_connection(tcp_conn, addr):
+    """Handles incoming TCP connections and tries to establish
+       an SSH  channel for communication with the client.
+       
+       If established the function then reads a username/password
+       from the network and tries to login that user.
+    """
     
     print("[*] Recieved client connection with address: {:s}.".format(addr[0]))
     
@@ -106,24 +57,23 @@ def handle_connection(tcp_conn, addr):
     password = login_info["password"]
 
 
+    db_conn = DatabaseConnection()
     try:
-        db_conn = sqlite3.connect(database.DATABSE_NAME)
-        if database.has_user_by(db_conn, username, password):
+        if db_conn.has_user_by(username, password):
             client_connection.send_json_object({ "status": "success" })
         else:
             client_connection.send_json_object({ "status": "wrong_creds" })
             client_connection.close()
     except (socket.timeout, socket.error):
         client_connection.close()
-    finally:
-        db_conn.close()
+        return
 
     # TODO: here we may update the last login information of the database
 
-    connected_clients[client_connection] = Client(addr, username)
-
-    handle_client_packets(client_connection)
-    
+    client = Client(client_connection, db_conn.get_user_id(username), addr, username)
+    packet_processing.connected_clients[client_connection] = client
+    packet_processing.usernames_to_connections[username] = client_connection
+    packet_processing.handle_client_packets(client_connection)
 
 
 print("[*] Opening the server socket for connections...")
@@ -143,7 +93,7 @@ def handle_shutdown():
     print("\n\nClosing server down!\n")
     sock.close()
     # Close all open connections so the user threads shutdown properly.
-    for client_connection in connected_clients:
+    for client_connection in packet_processing.connected_clients:
         client_connection.close()
     sys.exit(1)
 
