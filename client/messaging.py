@@ -1,6 +1,8 @@
+import typing
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
+from PyQt5.QtWidgets import QWidget
 import connection
 from threading import Thread 
 
@@ -77,12 +79,16 @@ class MessageBoard(QWidget):
       message_group.setLayout(message_layout)
       self.main_layout.addWidget(message_group)
 
-      self.msgs_layout = QFormLayout()
+      self.msgs_layout = QVBoxLayout()
+      
       self.msgs_content = QWidget()
+      self.msgs_content.setFixedHeight(0)
       self.msgs_content.setLayout(self.msgs_layout)
 
       self.msg_scroll_area = QScrollArea()
+      self.msg_scroll_area.verticalScrollBar().rangeChanged.connect(self.msg_scrollbar_update)
       self.msg_scroll_area.setWidget(self.msgs_content)
+      self.msg_scroll_area.setAlignment(Qt.AlignBottom)
       self.msg_scroll_area.setWidgetResizable(True)
 
       self.msg_field = QLineEdit()
@@ -150,12 +156,27 @@ class MessageBoard(QWidget):
    def add_message_to_chat(self, from_user, msg):
       msg_label = QLabel(f"{from_user}: {msg}")
       msg_label.setWordWrap(True)
-      self.msgs_layout.addRow(msg_label)
+      # Calling adjustSize so that we can actually determine the size of the label given
+      # how many lines the text takes up from word wrapping.
+      msg_label.adjustSize()
+      
+      self.msgs_content.setFixedHeight(self.msgs_content.height() + msg_label.height())
+      # For some strange reason not setting alignment causes the widgets to just sorta align themselves
+      # randomly causing a rather obnoxious and disorderly looking assortment of text.
+      self.msgs_layout.addWidget(msg_label, alignment=Qt.AlignBottom)
+      
+   def msg_scrollbar_update(self):
+      # TODO: when requesting logs that are not the first set of logs this will need
+      # to not be set.
+      vbar = self.msg_scroll_area.verticalScrollBar()
+      vbar.setValue(vbar.maximum())
+      
 
    def switch_to_chatting_with(self, friend):
       if self.cur_friend_msging == friend:
          return
       self.cur_friend_msging = friend
+      self.msgs_content.setFixedHeight(0)
       self.set_friend_scroll_area_cur_friend(friend)
 
       self.conn.send_json_object({
