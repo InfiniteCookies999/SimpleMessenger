@@ -29,6 +29,7 @@ class MessageBoard(QWidget):
       self.friends = []
       self.cur_friend_msging = None
       self.username = ""
+      self.chat_log_instance_id = 0
       
       self.setWindowTitle("Simple Messenger")
       self.resize(600, 540)
@@ -97,7 +98,9 @@ class MessageBoard(QWidget):
    def handle_packets(self):
       
       while len(self.decoded_json_objects) > 0:
-         server_obj = self.decoded_json_objects.pop()
+         # pop(0) so that it pops from the front of the list allowing the
+         # list to behave as a queue.
+         server_obj = self.decoded_json_objects.pop(0)
 
          act = server_obj["act"]
          match act:
@@ -126,9 +129,20 @@ class MessageBoard(QWidget):
                      self.friends_scroll_layout.addRow(friend_label)
                   
                   if len(self.friends) > 0:
-                     self.cur_friend_msging = self.friends[0]
-                     self.set_friend_scroll_area_cur_friend(self.friends[0])
+                     self.switch_to_chatting_with(self.friends[0])
                      self.msg_field.setDisabled(False)
+               case "chat_log_start":
+                  # Since the chat logs are dispersed between multiple packets
+                  # a instance id is used to make sure the incoming chat logs
+                  # are part of the last requested set of logs.
+                  self.chat_log_instance_id = server_obj["instance_id"]
+               case "chat_log":
+                  from_user   = server_obj["from_user"]
+                  msg         = server_obj["msg"]
+                  instance_id = server_obj["instance_id"]
+
+                  if instance_id == self.chat_log_instance_id:
+                     self.add_message_to_chat(from_user, msg)
 
                case _:
                   print(f"Unknown act from server: {act}")
@@ -144,7 +158,11 @@ class MessageBoard(QWidget):
       self.cur_friend_msging = friend
       self.set_friend_scroll_area_cur_friend(friend)
 
-      # TODO: Want to request from the server the chatlogs.
+      self.conn.send_json_object({
+         "act": "chat_logs",
+         "user": friend,
+         "block": 0 # TODO: Will want to select more than the first 50 logs!
+      })
 
       for i in reversed(range(self.msgs_layout.count())):
          self.msgs_layout.itemAt(i).widget().setParent(None)      

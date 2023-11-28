@@ -6,7 +6,7 @@ import connection
 from database import DatabaseConnection 
 import socket
 import packet_processing
-from client import Client 
+from client import Client
 
 WORKING_DIR   = os.getcwd()
 HOST_KEY_PATH = WORKING_DIR + os.sep + "ssh-server.key"

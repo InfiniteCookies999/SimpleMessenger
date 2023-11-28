@@ -54,6 +54,7 @@ class ClientConnection:
                 parts = packet.split("\n")
                 rest         = parts[0]
                 self.json_lo = parts[1]
+                full = json_obj + rest
                 return json.loads(json_obj + rest)
             else:
                 json_obj += packet

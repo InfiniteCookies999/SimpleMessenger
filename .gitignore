@@ -7,3 +7,5 @@ server/ssh-server.key
 server/server.db
 
 */__pycache__/
+
+.vscode

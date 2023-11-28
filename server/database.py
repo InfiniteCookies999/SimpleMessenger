@@ -5,6 +5,8 @@ import bcrypt
 MAX_USERNAME_LENGTH = 16
 MAX_PASSWORD_LENGTH = 30
 
+MAX_LOG_REQUEST = 30
+
 DATABSE_NAME = "server.db"
 
 class DatabaseConnection:
@@ -39,6 +41,27 @@ class DatabaseConnection:
             FOREIGN KEY(friend_id) REFERENCES user(id)
         )""")
 
+        # Maps a pair of users to a chat_log.id. This id can be used to find
+        # all the logs between the two users.
+        db_cur.execute("""CREATE TABLE IF NOT EXISTS chat_log(
+            id INTEGER PRIMARY KEY,
+            user1_id INTEGER NOT NULL,
+            user2_id INTEGER NOT NULL,
+            FOREIGN KEY(user1_id) REFERENCES user(id),
+            FOREIGN KEY(user2_id) REFERENCES user(id)
+        )""")
+
+        db_cur.execute("""CREATE TABLE IF NOT EXISTS chat_log_msg(
+            id INTEGER PRIMARY KEY,
+            chat_log_id INTEGER NOT NULL,
+            from_user_id INTEGER NOT NULL,
+            chat_message TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            FOREIGN KEY(from_user_id) REFERENCES user(id),
+            FOREIGN KEY(chat_log_id) REFERENCES chat_log(id)
+        )""")
+
+
     def add_new_user(self, username, password):
         """Creates a new user for the given username and password
             and inserts it into the database.
@@ -70,6 +93,11 @@ class DatabaseConnection:
         db_cur = self.db_conn.cursor()
         res = db_cur.execute("SELECT id FROM user WHERE username=?", (username, )).fetchone()
         return res[0] if res != None else None
+    
+    def get_user_username(self, user_id):
+        db_cur = self.db_conn.cursor()
+        res = db_cur.execute("SELECT username FROM user WHERE id = ?", (user_id, )).fetchone()
+        return res[0]
 
     def delete_user(self, username):
         """Removes the user by the given username from the database.
@@ -110,11 +138,54 @@ class DatabaseConnection:
         db_cur = self.db_conn.cursor()
         res = db_cur.execute("""SELECT (
                                 EXISTS(
-                                    SELECT 1 FROM friends WHERE friends.user_id = ? AND friends.friend_id = ?
+                                    SELECT 1 FROM friends WHERE friends.user_id = :id1 AND friends.friend_id = :id2
                                 ) AND
                                 EXISTS(
-                                    SELECT 1 FROM friends WHERE friends.user_id = ? AND friends.friend_id = ?
+                                    SELECT 1 FROM friends WHERE friends.user_id = :id2 AND friends.friend_id = :id1
                                 ))
-                       """, (user_id, friend_id, friend_id, user_id))
+                       """, { "id1": user_id, "id2": friend_id})
         return res.fetchone()[0] == 1
+    
+    def _get_chat_log_id(self, user1_id, user2_id):
+        db_cur = self.db_conn.cursor()
+        res = db_cur.execute("""SELECT id FROM chat_log
+                                WHERE (user1_id = :id1 AND user2_id = :id2) OR
+                                      (user1_id = :id2 AND user2_id = :id1)
+                       """, { "id1": user1_id, "id2": user2_id }).fetchone()
+        return res[0] if res != None else None 
+
+    def add_chat_log_msg(self, from_user_id, to_user_id, chat_msg, timestamp):
+        db_cur = self.db_conn.cursor()
+
+        chat_log_id = self._get_chat_log_id(from_user_id, to_user_id)
+        if chat_log_id == None:
+            # There exist no chat logs between the two users so need to create
+            # a chat log id for their logs.
+            db_cur.execute("INSERT INTO chat_log VALUES(?, ?, ?)",
+                        (None, from_user_id, to_user_id))
+            self.db_conn.commit()
+            chat_log_id = self._get_chat_log_id(from_user_id, to_user_id)
         
+        db_cur.execute("INSERT INTO chat_log_msg VALUES(?, ?, ?, ?, ?)",
+                       (None, chat_log_id, from_user_id, chat_msg, timestamp))
+        self.db_conn.commit()
+
+    def get_chat_logs(self, user1_id, user2_id, offset):
+        """Returns a list of tuples that describe chat messages between
+           users for user1_id and user2_id.
+
+           Tuples in form: (from_user_id, chat_message, timestamp)
+        """
+        db_cur = self.db_conn.cursor()
+        chat_log_id = self._get_chat_log_id(user1_id, user2_id)
+        if chat_log_id == None:
+            # There exists no chat logs between those users.
+            return []
+        res = db_cur.execute(f"""SELECT from_user_id, chat_message, timestamp FROM chat_log_msg
+                                WHERE chat_log_id = ?
+                                ORDER BY id DESC
+                                LIMIT {MAX_LOG_REQUEST} OFFSET {offset}
+                    """, (chat_log_id, ))
+        logs = res.fetchall()
+        logs.reverse()
+        return logs
