@@ -4,11 +4,7 @@ from PyQt5.QtGui import *
 from threading import Thread
 from enum import Enum
 import connection
-
-MAX_USERNAME_LENGTH = 16
-USERNAME_REG_EXP    = QRegExp("[a-zA-Z][a-zA-Z_0-9]*")
-
-MAX_PASSWORD_LENGTH = 30
+from constants import *
 
 class LoginResponse(Enum):
     NONE         = 0
@@ -34,20 +30,18 @@ class LoginForm(QWidget):
         layout = QFormLayout()
         self.setLayout(layout)
 
-        font_name = "Helvetica"
-
         self.username_label = QLabel("Username")
-        self.username_label.setFont(QFont(font_name, 14))
+        self.username_label.setFont(QFont(FONT_NAME, 14))
         self.username_field = QLineEdit(self, maxLength=MAX_USERNAME_LENGTH)
-        self.username_field.setFont(QFont(font_name, 12))
-        self.username_field.setValidator(QRegExpValidator(USERNAME_REG_EXP))
+        self.username_field.setFont(QFont(FONT_NAME, 12))
+        self.username_field.setValidator(QRegExpValidator(QRegExp(USERNAME_REG_EXP)))
         self.username_field.setFixedSize(250, 30)
         self.username_field.textChanged.connect(lambda: self.error_label.clear())
 
         self.password_label = QLabel("Password")
-        self.password_label.setFont(QFont(font_name, 14))
+        self.password_label.setFont(QFont(FONT_NAME, 14))
         self.password_field = QLineEdit(self, maxLength=MAX_PASSWORD_LENGTH, echoMode=QLineEdit.EchoMode.Password)
-        self.password_field.setFont(QFont(font_name, 12))
+        self.password_field.setFont(QFont(FONT_NAME, 12))
         self.password_field.setFixedSize(250, 30)
         self.password_field.textChanged.connect(lambda: self.error_label.clear())
 
@@ -72,7 +66,10 @@ class LoginForm(QWidget):
 
     def login_check(self):
         if self.login_response == LoginResponse.SUCCESS:
+            # Sending requests for data to properly display to the client
             self.conn.send_json_object({ "act": "friends_list" })
+            self.conn.send_json_object({ "act": "sent_friends_requests" })
+            self.conn.send_json_object({ "act": "friend_requests" })
             self.login_response = LoginResponse.NONE
             self.on_successful_login()
         elif self.login_response == LoginResponse.WRONG_CREDS:
@@ -86,6 +83,7 @@ class LoginForm(QWidget):
 
     def on_successful_login(self):
         self.message_board.run_packet_recv_thread()
+        self.message_board.setWindowTitle("Simple Messenger - " + self.username_field.text())
         self.close()
         self.message_board.show()
 

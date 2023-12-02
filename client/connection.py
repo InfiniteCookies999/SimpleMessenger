@@ -47,7 +47,7 @@ class Connection:
                 # of \n characters so we place them into a backup queue
                 # and return from the queue if it is not empty on subsequent
                 # calls.
-                for i in range(1, len(parts) - 2):
+                for i in range(1, len(parts) - 1):
                     self.queued_json_objs.append(json.loads(parts[i]))
 
                 self.json_lo = parts[-1]

@@ -1,12 +1,10 @@
-import typing
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import QWidget
 import connection
 from threading import Thread 
-
-MAX_MESSAGE_LENGTH = 1500
+from constants import *
 
 class FriendLabel(QLabel):
    def __init__(self, friend, message_board):
@@ -28,19 +26,25 @@ class MessageBoard(QWidget):
       super().__init__()
       self.conn = conn
       self.decoded_json_objects = []
-      self.friends = []
       self.cur_friend_msging = None
       self.username = ""
       self.chat_log_instance_id = 0
       
       self.setWindowTitle("Simple Messenger")
       self.resize(600, 540)
-      
+
       self.main_layout = QHBoxLayout()
       self.setLayout(self.main_layout)
 
+      self.stack = QStackedWidget()
+      
       self.init_friend_group()
+      self.main_layout.addWidget(self.stack)
+      
       self.init_message_group()
+      self.init_friend_management_group()
+
+      self.stack.setCurrentIndex(0)
 
       self.handle_packets_timer = QTimer()
       self.handle_packets_timer.timeout.connect(self.handle_packets)
@@ -55,13 +59,16 @@ class MessageBoard(QWidget):
       self.main_layout.addWidget(friend_group)
 
       friend_info_bar = QWidget()
-      friend_info_bar.setFixedHeight(40)
+      friend_info_bar.setFixedHeight(80)
       friend_info_bar_layout = QFormLayout()
       friend_info_bar.setLayout(friend_info_bar_layout)
       friend_layout.addWidget(friend_info_bar)
       friend_info_label = QLabel("Friends List")
-      friend_info_label.setFont(QFont("Helvetica", 16))
+      friend_info_label.setFont(QFont(FONT_NAME, 16))
       friend_info_bar_layout.addRow(friend_info_label)
+      friend_mng_button = QPushButton("Manage Friends")
+      friend_mng_button.clicked.connect(self.switch_to_friend_management_group)
+      friend_info_bar_layout.addRow(friend_mng_button)
 
       friends_scroll_area = QScrollArea()
       friends_scroll_area.setWidgetResizable(True)
@@ -73,11 +80,16 @@ class MessageBoard(QWidget):
       friends_scroll_content.setLayout(self.friends_scroll_layout)
       friend_layout.addWidget(friends_scroll_area)
 
+   def switch_to_friend_management_group(self):
+      self.stack.setCurrentIndex(1)
+      self.cur_friend_msging = None
+      self.set_friend_scroll_area_cur_friend(None)
+
    def init_message_group(self):
       message_group = QWidget()
       message_layout = QVBoxLayout()
       message_group.setLayout(message_layout)
-      self.main_layout.addWidget(message_group)
+      self.stack.addWidget(message_group)
 
       self.msgs_layout = QVBoxLayout()
       
@@ -100,6 +112,87 @@ class MessageBoard(QWidget):
 
       message_layout.addWidget(self.msg_scroll_area)
       message_layout.addWidget(self.msg_field)
+
+   def init_friend_management_group(self):
+      friend_mng_group = QWidget()
+      friend_mng_layout = QFormLayout()
+      friend_mng_group.setLayout(friend_mng_layout)
+      self.stack.addWidget(friend_mng_group)
+
+      find_friend_section = QWidget()
+      find_friend_layout = QHBoxLayout()
+      find_friend_section.setLayout(find_friend_layout)
+      friend_mng_layout.addRow(find_friend_section)
+
+      self.find_friend_response_label = QLabel("")
+      self.find_friend_response_label.setStyleSheet("color : #f20000")
+
+      self.find_friend_field = QLineEdit()
+      self.find_friend_field.setPlaceholderText("Search for friend")
+      self.find_friend_field.setMaxLength(MAX_USERNAME_LENGTH)
+      self.find_friend_field.setValidator(QRegExpValidator(QRegExp(USERNAME_REG_EXP)))
+      self.find_friend_field.textChanged.connect(lambda: self.find_friend_response_label.clear())
+      find_friend_layout.addWidget(self.find_friend_field)
+      self.find_friend_submit_button = QPushButton("Send Friend Request")
+      self.find_friend_submit_button.clicked.connect(self.on_submit_add_friend)
+      find_friend_layout.addWidget(self.find_friend_submit_button)
+
+      friend_mng_layout.addRow(self.find_friend_response_label)
+
+      friend_sent_req_group = QWidget()
+      friend_sent_req_layout = QHBoxLayout()
+      friend_sent_req_group.setLayout(friend_sent_req_layout)
+      
+      sent_group = QWidget()
+      sent_layout = QVBoxLayout()
+      sent_group.setLayout(sent_layout)
+      sent_label = QLabel("Sent Friend Requests")
+      sent_label.setFont(QFont(FONT_NAME, 14))
+      sent_label.setFixedHeight(30)
+      sent_layout.addWidget(sent_label)
+      # Scroll area
+      sent_scroll_area = QScrollArea()
+      sent_scroll_area.setWidgetResizable(True)
+      sent_layout.addWidget(sent_scroll_area)
+      sent_scroll_content = QWidget()
+      self.sent_friend_req_scroll_layout = QFormLayout()
+      sent_scroll_content.setLayout(self.sent_friend_req_scroll_layout)
+      sent_scroll_area.setWidget(sent_scroll_content)
+      friend_sent_req_layout.addWidget(sent_group)
+
+      req_group = QWidget()
+      req_layout = QVBoxLayout()
+      req_group.setLayout(req_layout)
+      req_label = QLabel("Friend Requests")
+      req_label.setFont(QFont(FONT_NAME, 14))
+      req_label.setFixedHeight(30)
+      req_layout.addWidget(req_label)
+      # Scroll area
+      req_scroll_area = QScrollArea()
+      req_scroll_area.setWidgetResizable(True)
+      req_layout.addWidget(req_scroll_area)
+      req_scroll_content = QWidget()
+      self.req_friend_scroll_layout = QFormLayout()
+      req_scroll_content.setLayout(self.req_friend_scroll_layout)
+      req_scroll_area.setWidget(req_scroll_content)
+      friend_sent_req_layout.addWidget(req_group)
+
+      friend_mng_layout.addRow(friend_sent_req_group)
+
+
+   def on_submit_add_friend(self):
+      friend = self.find_friend_field.text()
+      if friend == self.username:
+         self.set_add_friend_error_text("Cannot add yourself as a friend!")
+         return
+      
+      self.find_friend_field.setText("")
+      
+      self.conn.send_json_object({
+         "act": "add_friend",
+         "user": friend
+      })
+      self.find_friend_submit_button.setDisabled(True)
 
    def handle_packets(self):
       
@@ -124,19 +217,32 @@ class MessageBoard(QWidget):
                   #       they have unread messages! 
 
                case "friends_list":
-                  self.friends = server_obj["body"]
+                  friends = server_obj["body"]
                
-                  for friend in self.friends:
-                     friend_label = FriendLabel(friend, self)
-                     friend_label.setFont(QFont("Helvetica", 12))
-                     if friend == self.cur_friend_msging:
-                        friend_label.setStyleSheet("background-color : gray")
-                     friend_label.setFixedHeight(30)
-                     self.friends_scroll_layout.addRow(friend_label)
+                  for friend in friends:
+                     self.add_friend_widget(friend)
                   
-                  if len(self.friends) > 0:
-                     self.switch_to_chatting_with(self.friends[0])
-                     self.msg_field.setDisabled(False)
+                  if len(friends) > 0:
+                     self.switch_to_chatting_with(friends[0])
+
+               case "sent_friends_requests":
+                  sent_friends = server_obj["body"]
+                  for sent_friend in sent_friends:
+                     self.add_sent_friend_request_widget(sent_friend)
+
+               case "friend_requests":
+                  friend_reqs = server_obj["body"]
+                  for friend_req in friend_reqs:
+                     self.add_friend_request_widget(friend_req)
+
+               case "friend_req":
+                  user_who_sent_req = server_obj["user"]
+                  
+                  if self.remove_sent_friend_req(user_who_sent_req):
+                     self.add_friend_widget(user_who_sent_req)
+                  else:
+                     self.add_friend_request_widget(user_who_sent_req)
+
                case "chat_log_start":
                   # Since the chat logs are dispersed between multiple packets
                   # a instance id is used to make sure the incoming chat logs
@@ -149,9 +255,71 @@ class MessageBoard(QWidget):
 
                   if instance_id == self.chat_log_instance_id:
                      self.add_message_to_chat(from_user, msg)
+               case "add_friend":
+                  status      = server_obj["status"]
+                  sent_friend = server_obj["user"]
+                  self.find_friend_submit_button.setDisabled(False)
+
+                  if status == "no_such_user":
+                     self.set_add_friend_error_text("There is no user by that username.")
+                  elif status == "already_friends":
+                     self.set_add_friend_error_text("You are already friends with that user.")
+                  elif status == "already_sent":
+                     self.set_add_friend_error_text("You already sent a friend request to that user.")
+                  elif status == "request_sent":
+                     self.find_friend_response_label.setText("Successfully sent friend request!")
+                     self.find_friend_response_label.setStyleSheet("")
+                     self.add_sent_friend_request_widget(sent_friend)
+                  elif status == "now_friends":
+                     self.find_friend_response_label.setText("You are now friends with the user!")
+                     self.find_friend_response_label.setStyleSheet("")
+
+                     # Iterate through the friend requests and remove the request by the user.
+                     for i in range(self.req_friend_scroll_layout.count()):
+                        friend_req_widget = self.req_friend_scroll_layout.itemAt(i).widget()
+                        if friend_req_widget.text() == sent_friend:
+                           friend_req_widget.setParent(None)
+
+                     self.add_friend_widget(sent_friend)
 
                case _:
                   print(f"Unknown act from server: {act}")
+
+   def add_friend_request_widget(self, friend_req):
+      req_group = QLabel(friend_req)
+      req_group.setFont(QFont(FONT_NAME, 12))
+      req_group.setFixedHeight(30)
+      self.req_friend_scroll_layout.addWidget(req_group)
+
+   def add_sent_friend_request_widget(self, sent_friend):
+      sent_group = QLabel(sent_friend)
+      sent_group.setFont(QFont(FONT_NAME, 12))
+      sent_group.setFixedHeight(30)
+      self.sent_friend_req_scroll_layout.addWidget(sent_group)
+
+   def remove_sent_friend_req(self, friend):
+      """Iterates over the sent friend request widgets looking for the widget
+         containing the friend by name ``friend``. Returns true if such a
+         the widget was found and removed.
+
+         :param friend: The friend name to search for and remove in the sent friend requests. 
+      """
+      for i in range(self.sent_friend_req_scroll_layout.count()):
+         sent_friend_req_widget = self.sent_friend_req_scroll_layout.itemAt(i).widget()
+         if sent_friend_req_widget.text() == friend:
+            sent_friend_req_widget.setParent(None)
+            return True
+      return False
+
+   def add_friend_widget(self, friend):
+      friend_label = FriendLabel(friend, self)
+      friend_label.setFont(QFont(FONT_NAME, 12))
+      friend_label.setFixedHeight(30)
+      self.friends_scroll_layout.addRow(friend_label)
+
+   def set_add_friend_error_text(self, text):
+      self.find_friend_response_label.setText(text)
+      self.find_friend_response_label.setStyleSheet("color : #f20000")
 
    def add_message_to_chat(self, from_user, msg):
       msg_label = QLabel(f"{from_user}: {msg}")
@@ -159,11 +327,19 @@ class MessageBoard(QWidget):
       # Calling adjustSize so that we can actually determine the size of the label given
       # how many lines the text takes up from word wrapping.
       msg_label.adjustSize()
-      
-      self.msgs_content.setFixedHeight(self.msgs_content.height() + msg_label.height())
+
       # For some strange reason not setting alignment causes the widgets to just sorta align themselves
       # randomly causing a rather obnoxious and disorderly looking assortment of text.
       self.msgs_layout.addWidget(msg_label, alignment=Qt.AlignBottom)
+
+      # Calculating the height when taking into account margins, spacing, and heights of
+      # the widgets.
+      margins = self.msgs_layout.getContentsMargins()
+      content_height = margins[1] + margins[3] + self.msgs_layout.spacing() * (self.msgs_layout.count() - 1)
+      for i in range(self.msgs_layout.count()):
+         content_height += self.msgs_layout.itemAt(i).widget().height()
+      
+      self.msgs_content.setFixedHeight(content_height)
       
    def msg_scrollbar_update(self):
       # TODO: when requesting logs that are not the first set of logs this will need
@@ -173,8 +349,11 @@ class MessageBoard(QWidget):
       
 
    def switch_to_chatting_with(self, friend):
+      self.msg_field.setDisabled(False)
+      
       if self.cur_friend_msging == friend:
          return
+      self.stack.setCurrentIndex(0)
       self.cur_friend_msging = friend
       self.msgs_content.setFixedHeight(0)
       self.set_friend_scroll_area_cur_friend(friend)
@@ -186,7 +365,7 @@ class MessageBoard(QWidget):
       })
 
       for i in reversed(range(self.msgs_layout.count())):
-         self.msgs_layout.itemAt(i).widget().setParent(None)      
+         self.msgs_layout.itemAt(i).widget().setParent(None)
 
    def set_friend_scroll_area_cur_friend(self, friend):
       for i in range(self.friends_scroll_layout.count()):
@@ -195,7 +374,9 @@ class MessageBoard(QWidget):
          if friend == friend_label.friend:
             friend_label.setStyleSheet("background-color : gray")
          else:
-            friend_label.setStyleSheet("")
+            friend_label.setStyleSheet("""
+               QLabel:hover { background-color : #9c9c9c; }
+            """)
 
    def run_packet_recv_thread(self):
       Thread(target=self.recv_packets).start()
@@ -205,13 +386,13 @@ class MessageBoard(QWidget):
          long as the connection is open.
       """
       while self.conn.is_open():
-         server_msg = self.conn.read_json_object()
+         server_obj = self.conn.read_json_object()
          
-         if server_msg == None:
+         if server_obj == None:
                # Means connection was closed.
                break
 
-         self.decoded_json_objects.append(server_msg)
+         self.decoded_json_objects.append(server_obj)
 
       print("Connection to server was closed.")
 

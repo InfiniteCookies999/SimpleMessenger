@@ -49,6 +49,10 @@ class ClientConnection:
               if the client sent a json object larger than
               ``MAX_JSON_OBJECT_SIZE``.
         """
+
+        if len(self.queued_json_objs) > 0:
+            return self.queued_json_objs.pop(0)
+
         json_obj = self.json_lo
         while self.is_open():
             packet = self.channel.recv(512).decode("utf-8")
@@ -59,20 +63,18 @@ class ClientConnection:
                 json_obj += parts[0]
                 if len(json_obj) > MAX_JSON_OBJECT_SIZE:
                     raise ValueError("Client sent a json object that was too large")
-
+                
                 # There might be extra json objects shoved between pairs
                 # of \n characters so we place them into a backup queue
                 # and return from the queue if it is not empty on subsequent
                 # calls.
-                for i in range(1, len(parts) - 2):
+                for i in range(1, len(parts) - 1):
                     self.queued_json_objs.append(json.loads(parts[i]))
 
                 self.json_lo = parts[-1]
                 return json.loads(json_obj)
             else:
                 json_obj += packet
-                if len(json_obj) > MAX_JSON_OBJECT_SIZE:
-                    raise ValueError("Client sent a json object that was too large")
         # Return None since the connection was closed.
         return None
 

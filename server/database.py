@@ -125,14 +125,41 @@ class DatabaseConnection:
         db_cur = self.db_conn.cursor()
         res = db_cur.execute("""SELECT t.username FROM (SELECT user.* FROM friends
                                 LEFT JOIN user ON user.id = friends.friend_id
-                                WHERE friends.user_id = ?) t
+                                WHERE friends.user_id = :id) t
 
-                                WHERE EXISTS(SELECT 1 FROM friends WHERE friends.user_id = t.id)
-        """, (user_id, ))
+                                WHERE EXISTS(SELECT 1 FROM friends WHERE friends.user_id = t.id AND
+                                             friends.friend_id = :id)
+        """, { "id": user_id })
+        return res.fetchall()
+    
+    def get_sent_friend_requests(self, user_id):
+         # Way to convert the list directly to a non-tupled list from the queried result.
+        self.db_conn.row_factory = lambda c, row: row[0]
+        db_cur = self.db_conn.cursor()
+        res = db_cur.execute("""SELECT t.username FROM (SELECT user.* FROM friends
+                                LEFT JOIN user ON user.id = friends.friend_id
+                                WHERE friends.user_id = :id) t
+
+                                WHERE NOT EXISTS(SELECT 1 FROM friends WHERE friends.user_id = t.id AND
+                                             friends.friend_id = :id)
+                       """, { "id": user_id })
+        return res.fetchall()
+    
+    def get_friend_requests(self, user_id):
+        # Way to convert the list directly to a non-tupled list from the queried result.
+        self.db_conn.row_factory = lambda c, row: row[0]
+        db_cur = self.db_conn.cursor()
+        res = db_cur.execute("""SELECT t.username FROM (SELECT user.* FROM friends
+                                LEFT JOIN user ON user.id = friends.user_id         
+                                WHERE friends.friend_id = :id) t
+                             
+                                WHERE NOT EXISTS(SELECT 1 FROM friends WHERE friends.user_id = :id AND
+                                                 friends.friend_id = t.id)
+                                """, { "id": user_id })
         return res.fetchall()
     
     def are_users_friends(self, user_id, friend_id):
-        """Returns true if both the user of user_id and the friend of friend_id
+        """Returns true if both the user of user_id and the friend by friend_id
            both have each other added as friends.
         """
         db_cur = self.db_conn.cursor()
@@ -146,6 +173,17 @@ class DatabaseConnection:
                        """, { "id1": user_id, "id2": friend_id})
         return res.fetchone()[0] == 1
     
+    def has_user_as_friend(self, user_id, friend_id):
+        """Returns true if the user by user_id has the user by friend_id added as a friend.
+
+           Unlike the function ``are_users_friends`` only the user by user_id has to have
+           the friend by friend_id to be added as a friend and not vice versa.
+        """
+        db_cur = self.db_conn.cursor()
+        res = db_cur.execute("SELECT EXISTS(SELECT 1 FROM friends WHERE friends.user_id = ? AND friends.friend_id = ?)",
+                       (user_id, friend_id))
+        return res.fetchone()[0] == 1
+
     def _get_chat_log_id(self, user1_id, user2_id):
         db_cur = self.db_conn.cursor()
         res = db_cur.execute("""SELECT id FROM chat_log

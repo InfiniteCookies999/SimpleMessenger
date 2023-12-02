@@ -13,6 +13,7 @@ def net_obj_has(net_obj, name, ty):
     return name in net_obj and isinstance(net_obj[name], ty)
 
 def on_message_packet(client, net_obj):
+    print("on_message_packet")
     if not net_obj_has(net_obj, "body", str):
         return
     if not net_obj_has(net_obj, "user", str):
@@ -60,11 +61,28 @@ def on_message_packet(client, net_obj):
 
 def on_friends_list_packet(client):
     db_conn = DatabaseConnection()
-    obj_to_sent = {
+    obj_to_send = {
         "act": "friends_list",
         "body": db_conn.get_friends(client.db_id)
     }
-    client.send_json_object(obj_to_sent)
+    client.send_json_object(obj_to_send)
+
+
+def on_req_sent_friend_requests_packet(client):
+    db_conn = DatabaseConnection()
+    obj_to_send = {
+        "act": "sent_friends_requests",
+        "body": db_conn.get_sent_friend_requests(client.db_id)
+    }
+    client.send_json_object(obj_to_send)
+    
+def on_req_friend_requests_packet(client):
+    db_conn = DatabaseConnection()
+    obj_to_send = {
+        "act": "friend_requests",
+        "body": db_conn.get_friend_requests(client.db_id)
+    }
+    client.send_json_object(obj_to_send)
 
 def on_req_chat_logs_packet(client, net_obj):
     if not net_obj_has(net_obj, "user", str):
@@ -100,6 +118,52 @@ def on_req_chat_logs_packet(client, net_obj):
 
     client.chat_logs_instance_id_counter += 1
 
+def on_add_friend_packet(client, net_obj):
+    if not net_obj_has(net_obj, "user", str):
+        return
+    
+    friend = net_obj["user"]
+    db_conn = DatabaseConnection()
+    friend_id = db_conn.get_user_id(friend)
+
+    obj_to_send = {
+        "act": "add_friend",
+        "user": friend
+    }
+
+    if friend_id == None:
+        obj_to_send["status"] = "no_such_user"
+        client.send_json_object(obj_to_send)
+        return
+    
+    if db_conn.are_users_friends(client.db_id, friend_id):
+        obj_to_send["status"] = "already_friends"
+        client.send_json_object(obj_to_send)
+        return
+
+    if db_conn.has_user_as_friend(client.db_id, friend_id):
+        obj_to_send["status"] = "already_sent"
+        client.send_json_object(obj_to_send)
+        return
+
+    db_conn.add_friend(client.db_id, friend_id)
+
+    if friend in usernames_to_connections:
+        friend_connection = connected_clients[usernames_to_connections[friend]]
+        friend_connection.send_json_object({
+            "act": "friend_req",
+            "user": client.username
+        })
+        # TODO: Need some way to send tell the other user they have been sent a friend
+        # request.
+    
+    if db_conn.are_users_friends(client.db_id, friend_id):
+        obj_to_send["status"] = "now_friends"
+    else:
+        obj_to_send["status"] = "request_sent"
+        
+    client.send_json_object(obj_to_send)
+
 def handle_client_packets(client_connection: ClientConnection):
     client = connected_clients[client_connection]
     
@@ -127,8 +191,14 @@ def handle_client_packets(client_connection: ClientConnection):
                 on_message_packet(client, net_obj)
             case "friends_list":
                 on_friends_list_packet(client)
+            case "sent_friends_requests":
+                on_req_sent_friend_requests_packet(client)
+            case "friend_requests":
+                on_req_friend_requests_packet(client)
             case "chat_logs":
                 on_req_chat_logs_packet(client, net_obj)
+            case "add_friend":
+                on_add_friend_packet(client, net_obj)    
             case _:
                 print("[=] Client sent an unknown act.")
                 break
