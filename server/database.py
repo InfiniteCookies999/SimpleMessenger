@@ -114,6 +114,13 @@ class DatabaseConnection:
         db_cur.execute("INSERT INTO friends VALUES(?, ?, ?)", (None, user_id, friend_id))
         self.db_conn.commit()
 
+    def remove_friend(self, user_id, friend_id):
+        """Removes a friend by friend_id for the user user_id.
+        """
+        db_cur = self.db_conn.cursor()
+        db_cur.execute("DELETE FROM friends WHERE user_id = ? AND friend_id = ?", (user_id, friend_id))
+        self.db_conn.commit()
+
     def get_friends(self, user_id):
         """Retrieves all friends of a given user_id. However, another user is only
            considered a friend if both users have each other added as friends, so

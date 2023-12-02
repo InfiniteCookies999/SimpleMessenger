@@ -21,6 +21,11 @@ class FriendLabel(QLabel):
 
       return super().mousePressEvent(event)
 
+class ReqWidget(QWidget):
+   def __init__(self, username):
+      super().__init__()
+      self.username = username
+
 # Utility function to help remove all the children of a layout.
 def clear_layout(layout):
    for i in reversed(range(layout.count())):
@@ -288,13 +293,18 @@ class MessageBoard(QWidget):
                      self.find_friend_response_label.setText("You are now friends with the user!")
                      self.find_friend_response_label.setStyleSheet("")
 
-                     # Iterate through the friend requests and remove the request by the user.
-                     for i in range(self.req_friend_scroll_layout.count()):
-                        friend_req_widget = self.req_friend_scroll_layout.itemAt(i).widget()
-                        if friend_req_widget.text() == sent_friend:
-                           friend_req_widget.setParent(None)
-
+                     self.remove_friend_req(sent_friend)
                      self.add_friend_widget(sent_friend)
+               case "remove_friend":
+                  friend = server_obj["user"]
+
+                  self.remove_sent_friend_req(friend)
+                  self.remove_friend_req(friend)
+
+                  for i in range(self.friends_scroll_layout.count()):
+                     friend_label = self.friends_scroll_layout.itemAt(i).widget()
+                     if friend_label.text() == friend:
+                        friend_label.setParent(None)
 
                case "disconnect":
                   self.on_disconnection()
@@ -317,16 +327,48 @@ class MessageBoard(QWidget):
       self.login_form.show()
 
    def add_friend_request_widget(self, friend_req):
-      req_group = QLabel(friend_req)
-      req_group.setFont(QFont(FONT_NAME, 12))
-      req_group.setFixedHeight(30)
+      req_group = ReqWidget(friend_req)
+      req_group.setFixedHeight(40)
+      req_group.setLayout(QHBoxLayout())
+      
+      label = QLabel(friend_req)
+      label.setFont(QFont(FONT_NAME, 12))
+      req_group.layout().addWidget(label)
+
+      accept_button = QPushButton("Accept")
+      accept_button.clicked.connect(lambda: self.on_accept_friend_req(friend_req))
+      req_group.layout().addWidget(accept_button)
+
       self.req_friend_scroll_layout.addWidget(req_group)
 
    def add_sent_friend_request_widget(self, sent_friend):
-      sent_group = QLabel(sent_friend)
-      sent_group.setFont(QFont(FONT_NAME, 12))
-      sent_group.setFixedHeight(30)
+      sent_group = ReqWidget(sent_friend)
+      sent_group.setFixedHeight(40)
+      sent_group.setLayout(QHBoxLayout())
+
+      label = QLabel(sent_friend)
+      label.setFont(QFont(FONT_NAME, 12))
+      sent_group.layout().addWidget(label)
+
+      cancel_button = QPushButton("Cancel")
+      cancel_button.clicked.connect(lambda: self.on_cancel_friend_req(sent_friend))
+      sent_group.layout().addWidget(cancel_button)
+      
       self.sent_friend_req_scroll_layout.addWidget(sent_group)
+
+   def on_cancel_friend_req(self, friend):
+      self.conn.send_json_object({
+         "act": "remove_friend",
+         "user": friend
+      })
+      self.remove_sent_friend_req(friend)
+
+   def on_accept_friend_req(self, friend):
+      self.conn.send_json_object({
+         "act": "add_friend",
+         "user": friend
+      })
+      self.remove_friend_req(friend)
 
    def remove_sent_friend_req(self, friend):
       """Iterates over the sent friend request widgets looking for the widget
@@ -336,11 +378,17 @@ class MessageBoard(QWidget):
          :param friend: The friend name to search for and remove in the sent friend requests. 
       """
       for i in range(self.sent_friend_req_scroll_layout.count()):
-         sent_friend_req_widget = self.sent_friend_req_scroll_layout.itemAt(i).widget()
-         if sent_friend_req_widget.text() == friend:
-            sent_friend_req_widget.setParent(None)
+         sent_friend_req_group = self.sent_friend_req_scroll_layout.itemAt(i).widget()
+         if sent_friend_req_group.username == friend:
+            sent_friend_req_group.setParent(None)
             return True
       return False
+   
+   def remove_friend_req(self, friend):
+      for i in range(self.req_friend_scroll_layout.count()):
+         friend_req_group = self.req_friend_scroll_layout.itemAt(i).widget()
+         if friend_req_group.username == friend:
+            friend_req_group.setParent(None)
 
    def add_friend_widget(self, friend):
       friend_label = FriendLabel(friend, self)

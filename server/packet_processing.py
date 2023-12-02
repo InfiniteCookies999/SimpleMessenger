@@ -161,6 +161,32 @@ def on_add_friend_packet(client, net_obj):
         
     client.send_json_object(obj_to_send)
 
+def on_remove_friend(client, net_obj):
+    if not net_obj_has(net_obj, "user", str):
+        return
+    
+    friend = net_obj["user"]
+    db_conn = DatabaseConnection()
+    friend_id = db_conn.get_user_id(friend)
+
+    if friend_id == None:
+        return
+    
+    if db_conn.has_user_as_friend(client.db_id, friend_id):
+        db_conn.remove_friend(client.db_id, friend_id)
+
+        if db_conn.has_user_as_friend(friend_id, client.db_id):
+            db_conn.remove_friend(friend_id, client.db_id)
+
+    if friend in usernames_to_connections:
+        # Letting the other client know that you removed them as a friend.
+        friend_connection = connected_clients[usernames_to_connections[friend]]
+        friend_connection.send_json_object({
+            "act": "remove_friend",
+            "user": client.username
+        })
+
+
 def handle_client_packets(client_connection: ClientConnection):
     client = connected_clients[client_connection]
     
@@ -195,7 +221,9 @@ def handle_client_packets(client_connection: ClientConnection):
             case "chat_logs":
                 on_req_chat_logs_packet(client, net_obj)
             case "add_friend":
-                on_add_friend_packet(client, net_obj)    
+                on_add_friend_packet(client, net_obj)
+            case "remove_friend":
+                on_remove_friend(client, net_obj)
             case _:
                 print("[=] Client sent an unknown act.")
                 break
