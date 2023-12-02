@@ -18,6 +18,11 @@ class FriendLabel(QLabel):
 
       return super().mousePressEvent(event)
 
+# Utility function to help remove all the children of a layout.
+def clear_layout(layout):
+   for i in reversed(range(layout.count())):
+      layout.itemAt(i).widget().setParent(None)
+
 class MessageBoard(QWidget):
 
    login_form : QWidget
@@ -282,8 +287,25 @@ class MessageBoard(QWidget):
 
                      self.add_friend_widget(sent_friend)
 
+               case "disconnect":
+                  self.on_disconnection()
+
                case _:
                   print(f"Unknown act from server: {act}")
+
+   def on_disconnection(self):
+      # Need to cleanup all the dynamic widgets.
+      clear_layout(self.msgs_layout)
+      clear_layout(self.friends_scroll_layout)
+      clear_layout(self.sent_friend_req_scroll_layout)
+      clear_layout(self.req_friend_scroll_layout)
+
+      self.cur_friend_msging = None
+      self.decoded_json_objects = []
+      
+      self.close()
+      self.login_form.set_form_enabled(True)
+      self.login_form.show()
 
    def add_friend_request_widget(self, friend_req):
       req_group = QLabel(friend_req)
@@ -350,9 +372,10 @@ class MessageBoard(QWidget):
 
    def switch_to_chatting_with(self, friend):
       self.msg_field.setDisabled(False)
-      
+
       if self.cur_friend_msging == friend:
          return
+      
       self.stack.setCurrentIndex(0)
       self.cur_friend_msging = friend
       self.msgs_content.setFixedHeight(0)
@@ -364,8 +387,7 @@ class MessageBoard(QWidget):
          "block": 0 # TODO: Will want to select more than the first 50 logs!
       })
 
-      for i in reversed(range(self.msgs_layout.count())):
-         self.msgs_layout.itemAt(i).widget().setParent(None)
+      clear_layout(self.msgs_layout)
 
    def set_friend_scroll_area_cur_friend(self, friend):
       for i in range(self.friends_scroll_layout.count()):
@@ -394,7 +416,7 @@ class MessageBoard(QWidget):
 
          self.decoded_json_objects.append(server_obj)
 
-      print("Connection to server was closed.")
+      self.decoded_json_objects.append({ "act": "disconnect" })
 
    def on_submit_msg(self):
       message_to_send = self.msg_field.text()

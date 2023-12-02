@@ -1,5 +1,6 @@
 import paramiko
 import json
+import socket
 
 class Connection:
     client  : paramiko.SSHClient = None
@@ -61,7 +62,12 @@ class Connection:
         """Takes a json object (python dictionary) and sends it to the server.
         """
         packet = bytes(json.dumps(obj) + "\n", encoding="utf-8")
-        self.channel.sendall(packet)
+        try:
+            self.channel.sendall(packet)
+        except socket.error:
+            # Just ignore and let the thread for handing the recieving of packets
+            # pick up on that the connection was closed.
+            pass
 
     def is_open(self):
         return self.client.get_transport() != None and self.client.get_transport().is_active()

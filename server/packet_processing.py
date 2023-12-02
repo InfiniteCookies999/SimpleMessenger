@@ -13,7 +13,6 @@ def net_obj_has(net_obj, name, ty):
     return name in net_obj and isinstance(net_obj[name], ty)
 
 def on_message_packet(client, net_obj):
-    print("on_message_packet")
     if not net_obj_has(net_obj, "body", str):
         return
     if not net_obj_has(net_obj, "user", str):
@@ -154,8 +153,6 @@ def on_add_friend_packet(client, net_obj):
             "act": "friend_req",
             "user": client.username
         })
-        # TODO: Need some way to send tell the other user they have been sent a friend
-        # request.
     
     if db_conn.are_users_friends(client.db_id, friend_id):
         obj_to_send["status"] = "now_friends"
