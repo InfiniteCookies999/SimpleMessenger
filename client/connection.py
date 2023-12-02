@@ -70,7 +70,9 @@ class Connection:
             pass
 
     def is_open(self):
-        return self.client.get_transport() != None and self.client.get_transport().is_active()
+        if self.client.get_transport() == None:
+            return False
+        return self.client.get_transport().is_active()
 
     def close(self):
         if self.channel == None:

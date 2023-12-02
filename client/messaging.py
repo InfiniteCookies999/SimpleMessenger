@@ -1,3 +1,6 @@
+import typing
+from PyQt5 import QtCore, QtGui
+from PyQt5.QtCore import QEvent, QObject
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -17,6 +20,70 @@ class FriendLabel(QLabel):
          self.message_board.switch_to_chatting_with(self.friend)
 
       return super().mousePressEvent(event)
+
+#class TestWidget(QWidget):
+#   def __init__(self):
+#      self.msgs_to_add = []
+#      super().__init__()
+#
+#   def resizeEvent(self, event):
+#      print("resize event called")
+#      return super().resizeEvent(event)
+#   
+#   def showEvent(self, event):
+#      print("show event called?")
+#      return super().showEvent(event)
+#   
+#   def changeEvent(self, event):
+#      print("change event called?")
+#      return super().changeEvent(event)
+#   
+#   def paintEvent(self, event):
+#      print("paint event?")
+#      return super().paintEvent(event)
+#   
+#   def updateGeometry(self):
+#      print("updating geometry?")
+#      return super().updateGeometry()
+#
+#   def eventFilter(self, obj, event) -> bool:
+#      if event == QEvent.LayoutRequest:
+#         print("layout request?")
+#      else:
+#         print(f"event: {event}")
+#      return super().eventFilter(obj, event)
+#
+   #def resizeEvent(self, event):
+   #   super().resizeEvent(event)
+   #   while len(self.msgs_to_add) > 0:
+   #      msg = self.msgs_to_add.pop(0)
+#
+   #      msg_label = QLabel(f"{msg[0]}: {msg[1]}")
+   #      msg_label.setFont(QFont(FONT_NAME, 10))
+   #      msg_label.setWordWrap(True)
+   #      #msg_label.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding)
+   #      msg_label.setStyleSheet("background-color : red")
+   #      #msg_label.showEvent()
+   #      msg_label.adjustSize()
+#
+   #      self.layout().addWidget(msg_label, alignment=Qt.AlignBottom)
+#
+   #      # Calculating the height when taking into account margins, spacing, and heights of
+   #      # the widgets.
+   #      margins = self.layout().getContentsMargins()
+   #      content_height = margins[1] + margins[3] + self.layout().spacing() * (self.layout().count() - 1)
+   #      
+   #      for i in range(self.layout().count()):
+   #         self.layout().itemAt(i).widget().adjustSize()
+   #         content_height += self.layout().itemAt(i).widget().height()
+   #      
+   #      #self.msg_scroll_area.updateGeometry()
+   #      #
+   #      #print(f"content height: {content_height}")
+   #      self.setFixedHeight(content_height)
+
+         
+
 
 # Utility function to help remove all the children of a layout.
 def clear_layout(layout):
@@ -97,9 +164,10 @@ class MessageBoard(QWidget):
       self.stack.addWidget(message_group)
 
       self.msgs_layout = QVBoxLayout()
+      self.msgs_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+      self.msgs_layout.setSpacing(0)
       
       self.msgs_content = QWidget()
-      self.msgs_content.setFixedHeight(0)
       self.msgs_content.setLayout(self.msgs_layout)
 
       self.msg_scroll_area = QScrollArea()
@@ -201,6 +269,11 @@ class MessageBoard(QWidget):
 
    def handle_packets(self):
       
+      if not self.isVisible():
+         # Do not update anything until visible because otherwise values calculated
+         # will be inaccurate!
+         return
+
       while len(self.decoded_json_objects) > 0:
          # pop(0) so that it pops from the front of the list allowing the
          # list to behave as a queue.
@@ -344,25 +417,18 @@ class MessageBoard(QWidget):
       self.find_friend_response_label.setStyleSheet("color : #f20000")
 
    def add_message_to_chat(self, from_user, msg):
+      
       msg_label = QLabel(f"{from_user}: {msg}")
+      msg_label.setFont(QFont(FONT_NAME, 10))
       msg_label.setWordWrap(True)
-      # Calling adjustSize so that we can actually determine the size of the label given
-      # how many lines the text takes up from word wrapping.
-      msg_label.adjustSize()
+      msg_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Minimum)
+      # Setting the style sheet temporarily so things align correctly.
+      # Without this the text ends up with very weird spacing.
+      msg_label.setStyleSheet("background-color : red")
+      msg_label.setStyleSheet("")
 
-      # For some strange reason not setting alignment causes the widgets to just sorta align themselves
-      # randomly causing a rather obnoxious and disorderly looking assortment of text.
-      self.msgs_layout.addWidget(msg_label, alignment=Qt.AlignBottom)
+      self.msgs_layout.addWidget(msg_label)
 
-      # Calculating the height when taking into account margins, spacing, and heights of
-      # the widgets.
-      margins = self.msgs_layout.getContentsMargins()
-      content_height = margins[1] + margins[3] + self.msgs_layout.spacing() * (self.msgs_layout.count() - 1)
-      for i in range(self.msgs_layout.count()):
-         content_height += self.msgs_layout.itemAt(i).widget().height()
-      
-      self.msgs_content.setFixedHeight(content_height)
-      
    def msg_scrollbar_update(self):
       # TODO: when requesting logs that are not the first set of logs this will need
       # to not be set.
